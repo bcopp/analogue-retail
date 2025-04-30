@@ -8,11 +8,13 @@
 
 # Test
 The test hit three of the five api endpoints
-- Post /add
-- Delete /remove
-- Search /search?search=... (Implements fuzzy search)
+- Post    `/add`
+- Delete  `/remove/{product_id}`
+- Get     `/search?name=...` (Implements fuzzy search)
+- Get     `/analytics/view/{product_id}`
 
 # Output
+```
 INFO:__main__:Successfully uploaded sample.jpg to S3 with key brendanheadshot
 INFO:__main__:Added product: beer with ID 1046
 INFO:__main__:Added product: beers with ID 6047
@@ -89,5 +91,4 @@ INFO:__main__:{
   ]
 }
 INFO:__main__:Viewed product 1046
-
-
+```

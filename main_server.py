@@ -109,6 +109,7 @@ async def view_product(product_id: int):
             """, (product_id,))
             
             connection.commit()
+            print(f'view incremented - Product ID: {product_id}")
             return {"message": "View count updated successfully"}
         except Exception as e:
             handle_database_error(e)
