@@ -7,7 +7,7 @@
 - poetry run python tester.py
 
 # Test
-The test hit three of the five api endpoints
+The test hits these api endpoints
 - Post    `/add`
 - Delete  `/remove/{product_id}`
 - Get     `/search?name=...` (Implements fuzzy search)
