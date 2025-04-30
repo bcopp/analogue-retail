@@ -1,0 +1,49 @@
+Today we are building a backend retail site in python,
+
+Create a docker compose which pulls up a mongoDB and MySQL database as services. Then write a Makefile with the command "up" and "down" which brings up and pulls down the docker compose, also include the command deps which runs "poetry lock"
+
+write a python script called initialize_database
+
+This script connects to the SQL database and intializes it with the tables "user" "view" "product"
+
+"user" has the columns
+user, name, email, password, last_login
+
+"view" has the columns
+product_id, view
+
+"product" has the columns
+product_id, name, description, image-key
+
+This script connects to mongodb and initializes it with a table called "products"
+
+product: [
+  
+]
+
+
+write a python server called search with one GET endpoint /search which takes an aregument for a query string. The
+
+
+
+create a python file called main_server which connects to the mysql database. main_server has following endpoints
+
+"view" a get endpoint which takes as an argument "product_id", view will looks for that product_id in the mysql database and updates it if it exists
+
+"add" a post endpoint which takes the payload {product_id, name, description, image_key} perform sanity checks on the data and ensure the image_key is a valid s3 endpoint, then add this data to the product table
+
+"remove" a delete endpoint which takes as an argument a the "product_id". Try and remove that product from the "product" and "view" table
+
+"search" a get endpoint which takes the argument "name", the endpoint will return up to 20 of the latest items that have a similar name, use the SOUNDEX command to lookup these items
+
+"purchase" a post request endpoint which has a body containing user_id and product_id, this endpoint simpily prints the body of the message
+
+
+
+write a script called tester.py which connects to the localstack s3 instances and upload the file sample.jpg to the key "brendanheadshot". Then have it push 10 items to main_server with randomly generated product_id's random small price points the image_key "brendanheadshot" and the names "beer" "beers" "be" "beer4" "apple" "beer5" "beer6" "beer7" "beer8" "beer9" "beer10" to the /add each with different prices points to the endpoint of the main_server.
+
+then remove two of these products at the /remove endpoint
+
+then use the /search endpoint to search for "beer" and log the results
+
+then hit the /analytics/view endpoint with one of the product_id's
