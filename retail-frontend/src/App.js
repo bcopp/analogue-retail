@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Link, useParams } from 'react-router-dom';
 import './App.css';
 
-function App() {
+function ProductList() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -41,13 +42,10 @@ function App() {
   if (error) return <div className="error">Error: {error}</div>;
 
   return (
-    <div className="App">
-      <header className="App-header">
-        <h1>Retail Products</h1>
-      </header>
-      <main className="product-list">
-        {products.map((product) => (
-          <div key={product.product_id} className="product-card">
+    <div className="product-list">
+      {products.map((product) => (
+        <Link to={`/product/${product.product_id}`} key={product.product_id} className="product-link">
+          <div className="product-card">
             <div className="product-image">
               <img 
                 src={`/image/products/${product.image_key}`} 
@@ -65,9 +63,104 @@ function App() {
               <p className="views">Views: {product.view_count || 0}</p>
             </div>
           </div>
-        ))}
-      </main>
+        </Link>
+      ))}
     </div>
+  );
+}
+
+function ProductDetail() {
+  const { productId } = useParams();
+  const [product, setProduct] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const fetchProduct = async () => {
+      try {
+        // First, update the view count
+        await fetch(`/api/analytics/view/${productId}`, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        });
+
+        // Then fetch the product details
+        const response = await fetch('/api/getall', {
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Failed to fetch products: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        const product = data.products.find(p => p.product_id === parseInt(productId));
+        
+        if (!product) {
+          throw new Error('Product not found');
+        }
+        
+        setProduct(product);
+      } catch (err) {
+        console.error('Error details:', err);
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProduct();
+  }, [productId]);
+
+  if (loading) return <div className="loading">Loading product details...</div>;
+  if (error) return <div className="error">Error: {error}</div>;
+  if (!product) return <div className="error">Product not found</div>;
+
+  return (
+    <div className="product-detail">
+      <h1>{product.name}</h1>
+      <div className="product-detail-content">
+        <div className="product-detail-image">
+          <img 
+            src={`/image/products/${product.image_key}`} 
+            alt={product.name}
+            onError={(e) => {
+              e.target.onerror = null;
+              e.target.src = 'https://via.placeholder.com/150?text=No+Image';
+            }}
+          />
+        </div>
+        <div className="product-detail-info">
+          <p className="price">${product.price.toFixed(2)}</p>
+          <p className="views">Views: {product.view_count || 0}</p>
+          <p className="description">{product.description}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <Router>
+      <div className="App">
+        <header className="App-header">
+          <h1>Retail Products</h1>
+        </header>
+        <main>
+          <Routes>
+            <Route path="/" element={<ProductList />} />
+            <Route path="/product/:productId" element={<ProductDetail />} />
+          </Routes>
+        </main>
+      </div>
+    </Router>
   );
 }
 
