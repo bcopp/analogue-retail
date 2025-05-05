@@ -1,10 +1,7 @@
 # Quick start
-- ensure "pipx" is installed
-- install "poetry"
+- ensure Docker is installed
 - make up
-- poetry lock && poetry install
-- poetry run python initialize_databse.py
-- poetry run python tester.py
+- http://localhost:3000/
 
 # Test
 The test hits these api endpoints

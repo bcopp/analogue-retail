@@ -1,27 +1,27 @@
 version: '3.8'
 
-services:
-  mongodb:
-    image: mongo:latest
-    container_name: retail_mongodb
-    ports:
-      - "27017:27017"
-    environment:
-      - MONGO_INITDB_ROOT_USERNAME=root
-      - MONGO_INITDB_ROOT_PASSWORD=example
-    volumes:
-      - mongodb_data:/data/db
+networks:
+  retail-network:
+    driver: bridge
 
+services:
   mysql:
     image: mysql:8.0
     container_name: retail_mysql
     ports:
       - "3306:3306"
     environment:
-      - MYSQL_ROOT_PASSWORD=example
-      - MYSQL_DATABASE=retail_db
-    volumes:
-      - mysql_data:/var/lib/mysql
+      - MYSQL_ROOT_PASSWORD=password
+      - MYSQL_DATABASE=retail
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ppassword"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - retail-network
 
   localstack:
     image: localstack/localstack:latest
@@ -36,38 +36,78 @@ services:
       - AWS_DEFAULT_REGION=us-east-1
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
-    volumes:
-      - "${LOCALSTACK_VOLUME_DIR:-./volume}:/var/lib/localstack"
-      - "/var/run/docker.sock:/var/run/docker.sock"
+      - DATA_DIR=/tmp/localstack/data
+    tmpfs:
+      - /var/lib/localstack
+    networks:
+      - retail-network
 
-  main_server:
+  backend:
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile
-    container_name: retail_main_server
+    container_name: retail_backend
     ports:
       - "8000:8000"
+    environment:
+      - MYSQL_HOST=mysql
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=password
+      - MYSQL_DATABASE=retail
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+      - S3_ENDPOINT_URL=http://localstack:4566
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - retail-network
+
+  frontend:
+    build:
+      context: ./retail-frontend
+      dockerfile: Dockerfile.dev
+    container_name: retail_frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./retail-frontend:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - CHOKIDAR_USEPOLLING=true
+      - REACT_APP_API_URL=http://backend:8000
+    command: npm start
+    depends_on:
+      - backend
+    networks:
+      - retail-network
+
+  init_db:
+    build:
+      context: ./initializer
+      dockerfile: Dockerfile
+    container_name: retail_init_db
+    depends_on:
+      mysql:
+        condition: service_healthy
+      localstack:
+        condition: service_started
+    command: ["poetry", "run", "python", "initialize_database.py"]
     environment:
       - DB_HOST=mysql
       - DB_PORT=3306
       - DB_USER=root
-      - DB_PASSWORD=example
-      - DB_NAME=retail_db
+      - DB_PASSWORD=password
+      - DB_NAME=retail
       - S3_ENDPOINT_URL=http://localstack:4566
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_REGION=us-east-1
-    depends_on:
-      - mysql
-      - localstack
-    # networks:
-      # - retail_network
-
-# networks:
-  # retail_network:
-    # driver: bridge
-
-volumes:
-  mongodb_data:
-  mysql_data:
-  localstack_data: 
+      - BACKEND_URL=http://backend:8000
+      - S3_BUCKET_NAME=products
+      - S3_IMAGE_KEY=brendanheadshot
+      - IMAGE_PATH=sample.png
+    networks:
+      - retail-network

@@ -10,6 +10,3 @@ up:
 
 down:
 	docker compose down
-
-one-time:
-	curl -sSL https://install.python-poetry.org | python3 -
