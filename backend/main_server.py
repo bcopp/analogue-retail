@@ -2,36 +2,43 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import mysql.connector
 from mysql.connector import Error, IntegrityError, DataError, ProgrammingError
-import boto3
+from google.cloud import storage
 from typing import List, Optional
 import re
 import os
+import sys
+
+def requireenv(name: str) -> str:
+    """Require an environment variable to be set, panic if not found"""
+    value = os.getenv(name)
+    if value is None:
+        print(f"Error: Required environment variable {name} is not set", file=sys.stderr)
+        sys.exit(1)
+    return value
 
 app = FastAPI()
 
 # Database connection configuration from environment variables
 DB_CONFIG = {
-    'host': os.getenv('MYSQL_HOST', 'mysql'),
-    'port': int(os.getenv('MYSQL_PORT', '3306')),
-    'user': os.getenv('MYSQL_USER', 'root'),
-    'password': os.getenv('MYSQL_PASSWORD', 'password'),
-    'database': os.getenv('MYSQL_DATABASE', 'retail')
+    'host': requireenv('MYSQL_HOST'),
+    'port': int(requireenv('MYSQL_PORT')),
+    'user': requireenv('MYSQL_USER'),
+    'password': requireenv('MYSQL_PASSWORD'),
+    'database': requireenv('MYSQL_DATABASE')
 }
 
-# S3 configuration from environment variables
-S3_CONFIG = {
-    'endpoint_url': os.getenv('S3_ENDPOINT_URL', 'http://localstack:4566'),
-    'aws_access_key_id': os.getenv('AWS_ACCESS_KEY_ID', 'test'),
-    'aws_secret_access_key': os.getenv('AWS_SECRET_ACCESS_KEY', 'test'),
-    'region_name': os.getenv('AWS_DEFAULT_REGION', 'us-east-1')
+# GCS configuration from environment variables
+GCS_CONFIG = {
+    'project': requireenv('GOOGLE_CLOUD_PROJECT'),
+    'bucket_name': requireenv('GCS_BUCKET_NAME')
 }
 
-# Initialize S3 client
-s3_client = boto3.client('s3', **S3_CONFIG)
+# Initialize GCS client
+storage_client = storage.Client()
 
 # Print configuration for debugging
 print("Database Configuration:", {k: v for k, v in DB_CONFIG.items() if k != 'password'})
-print("S3 Configuration:", {k: v for k, v in S3_CONFIG.items() if k not in ['aws_access_key_id', 'aws_secret_access_key']})
+print("GCS Configuration:", GCS_CONFIG)
 
 # Pydantic models for request validation
 class ProductAdd(BaseModel):
@@ -51,11 +58,12 @@ def get_db_connection():
     except Error as e:
         raise HTTPException(status_code=500, detail=f"Database connection error: {str(e)}")
 
-def validate_s3_key(image_key: str) -> bool:
+def validate_gcs_key(image_key: str) -> bool:
     try:
-        # Check if the key exists in the bucket
-        s3_client.head_object(Bucket='products', Key=image_key)
-        return True
+        # Check if the blob exists in the bucket
+        bucket = storage_client.bucket(GCS_CONFIG['bucket_name'])
+        blob = bucket.blob(image_key)
+        return blob.exists()
     except:
         return False
 
@@ -90,6 +98,10 @@ def handle_database_error(e: Exception) -> None:
         raise HTTPException(status_code=500, detail=f"Database programming error: {str(e)}")
     else:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
 
 @app.get("/analytics/view/{product_id}")
 async def view_product(product_id: int):
@@ -137,9 +149,9 @@ async def add_product(product: ProductAdd):
                 detail="Invalid price. Price must be positive, have at most 2 decimal places, and be less than 100 million"
             )
         
-        # Validate S3 key
-        if not validate_s3_key(product.image_key):
-            raise HTTPException(status_code=400, detail="Invalid S3 image key")
+        # Validate GCS key
+        if not validate_gcs_key(product.image_key):
+            raise HTTPException(status_code=400, detail="Invalid GCS image key")
         
         # Insert product
         try:

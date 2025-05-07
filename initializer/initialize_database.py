@@ -1,6 +1,6 @@
 import mysql.connector
 from mysql.connector import Error
-import boto3
+from google.cloud import storage
 import requests
 import random
 import uuid
@@ -9,36 +9,42 @@ from typing import List, Dict
 import logging
 import time
 import os
+import sys
 from tenacity import retry, stop_after_attempt, wait_exponential
+
+def requireenv(name: str) -> str:
+    """Require an environment variable to be set, panic if not found"""
+    value = os.getenv(name)
+    if value is None:
+        logger.error(f"Error: Required environment variable {name} is not set")
+        sys.exit(1)
+    return value
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Configuration from environment variables
-S3_CONFIG = {
-    'endpoint_url': os.getenv('S3_ENDPOINT_URL', 'http://localstack:4566'),
-    'aws_access_key_id': os.getenv('AWS_ACCESS_KEY_ID', 'test'),
-    'aws_secret_access_key': os.getenv('AWS_SECRET_ACCESS_KEY', 'test'),
-    'region_name': os.getenv('AWS_DEFAULT_REGION', 'us-east-1')
+GCS_CONFIG = {
+    'project': requireenv('GOOGLE_CLOUD_PROJECT'),
+    'bucket_name': requireenv('GCS_BUCKET_NAME')
 }
 
-MAIN_SERVER_URL = os.getenv('BACKEND_URL', 'http://backend:8000')
-BUCKET_NAME = os.getenv('S3_BUCKET_NAME', 'products')
-IMAGE_KEY = os.getenv('S3_IMAGE_KEY', 'brendanheadshot')
-IMAGE_PATH = os.getenv('IMAGE_PATH', 'sample.png')
+MAIN_SERVER_URL = requireenv('BACKEND_URL')
+IMAGE_KEY = requireenv('GCS_IMAGE_KEY')
+IMAGE_PATH = requireenv('IMAGE_PATH')
 
 # Database configuration from environment variables
 DB_CONFIG = {
-    'host': os.getenv('DB_HOST', 'mysql'),
-    'port': int(os.getenv('DB_PORT', '3306')),
-    'user': os.getenv('DB_USER', 'root'),
-    'password': os.getenv('DB_PASSWORD', 'password'),
-    'database': os.getenv('DB_NAME', 'retail')
+    'host': requireenv('DB_HOST'),
+    'port': int(requireenv('DB_PORT')),
+    'user': requireenv('DB_USER'),
+    'password': requireenv('DB_PASSWORD'),
+    'database': requireenv('DB_NAME')
 }
 
-# Initialize S3 client
-s3_client = boto3.client('s3', **S3_CONFIG)
+# Initialize GCS client
+storage_client = storage.Client()
 
 @retry(stop=stop_after_attempt(10), wait=wait_exponential(multiplier=1, min=4, max=10))
 def get_db_connection():
@@ -106,34 +112,22 @@ def initialize_database():
             logger.info("MySQL connection is closed")
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
-def upload_to_s3():
-    """Upload sample.png to S3"""
+def upload_to_gcs():
+    """Upload sample.png to Google Cloud Storage"""
     try:
-        # Create bucket if it doesn't exist
-        try:
-            logger.info(f"Creating bucket {BUCKET_NAME} if it doesn't exist")
-            s3_client.create_bucket(
-                Bucket=BUCKET_NAME,
-            )
-            logger.info(f"Successfully created bucket {BUCKET_NAME}")
-        except Exception as e:
-            if "BucketAlreadyOwnedByYou" in str(e):
-                logger.info(f"Bucket {BUCKET_NAME} already exists")
-            else:
-                logger.error(f"Error creating bucket: {e}")
-                raise
+        bucket = storage_client.bucket(GCS_CONFIG['bucket_name'])
         
         # Upload the file
-        logger.info(f"Uploading {IMAGE_PATH} to bucket {BUCKET_NAME} with key {IMAGE_KEY}")
-        s3_client.upload_file(
-            Filename=IMAGE_PATH,
-            Bucket=BUCKET_NAME,
-            Key=IMAGE_KEY,
-            ExtraArgs={'ACL': 'public-read'}
-        )
-        logger.info(f"Successfully uploaded {IMAGE_PATH} to S3 with key {IMAGE_KEY}")
+        logger.info(f"Uploading {IMAGE_PATH} to bucket {GCS_CONFIG['bucket_name']} with key {IMAGE_KEY}")
+        blob = bucket.blob(IMAGE_KEY)
+        blob.upload_from_filename(IMAGE_PATH)
+        
+        # Make the blob publicly accessible
+        blob.make_public()
+        
+        logger.info(f"Successfully uploaded {IMAGE_PATH} to GCS with key {IMAGE_KEY}")
     except Exception as e:
-        logger.error(f"Failed to upload to S3: {e}")
+        logger.error(f"Failed to upload to GCS: {e}")
         raise
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
@@ -259,7 +253,7 @@ def main():
         logger.info("Waiting for backend service to be ready...")
         
         # Step 1: Upload image to S3
-        upload_to_s3()
+        upload_to_gcs()
         
         # Step 2: Add products
         added_ids = add_products()
