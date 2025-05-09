@@ -27,12 +27,10 @@ logger = logging.getLogger(__name__)
 # Configuration from environment variables
 GCS_CONFIG = {
     'project': requireenv('GOOGLE_CLOUD_PROJECT'),
-    'bucket_name': requireenv('GCS_BUCKET_NAME')
 }
 
 MAIN_SERVER_URL = requireenv('BACKEND_URL')
-IMAGE_KEY = requireenv('GCS_IMAGE_KEY')
-IMAGE_PATH = requireenv('IMAGE_PATH')
+IMAGE_SRC = requireenv('IMAGE_SRC')
 
 # Database configuration from environment variables
 DB_CONFIG = {
@@ -85,7 +83,7 @@ def initialize_database():
                     product_id INT AUTO_INCREMENT PRIMARY KEY,
                     name VARCHAR(255) NOT NULL,
                     description TEXT,
-                    image_key VARCHAR(255),
+                    image_src VARCHAR(255),
                     price DECIMAL(10,2) NOT NULL
                 )
             """)
@@ -115,17 +113,26 @@ def initialize_database():
 def upload_to_gcs():
     """Upload sample.png to Google Cloud Storage"""
     try:
-        bucket = storage_client.bucket(GCS_CONFIG['bucket_name'])
+        # Extract the blob name from the full GCS path
+        if not IMAGE_SRC.startswith('gs://'):
+            raise ValueError("IMAGE_SRC must start with 'gs://'")
         
+        path_parts = IMAGE_SRC[5:].split('/', 1)  # Remove 'gs://' and split into bucket and blob
+        if len(path_parts) != 2:
+            raise ValueError(f"Invalid GCS path format {path_parts}")
+        
+        bucket_name, blob_name = path_parts
+        bucket = storage_client.bucket(bucket_name)
+
         # Upload the file
-        logger.info(f"Uploading {IMAGE_PATH} to bucket {GCS_CONFIG['bucket_name']} with key {IMAGE_KEY}")
-        blob = bucket.blob(IMAGE_KEY)
-        blob.upload_from_filename(IMAGE_PATH)
+        logger.info(f"Uploading to {IMAGE_SRC}")
+        blob = bucket.blob(blob_name)
+        blob.upload_from_filename('sample.png')  # Use the local file name
         
         # Make the blob publicly accessible
         blob.make_public()
         
-        logger.info(f"Successfully uploaded {IMAGE_PATH} to GCS with key {IMAGE_KEY}")
+        logger.info(f"Successfully uploaded to {IMAGE_SRC}")
     except Exception as e:
         logger.error(f"Failed to upload to GCS: {e}")
         raise
@@ -198,7 +205,7 @@ def add_products():
             "product_id": product_id,
             "name": product["name"],
             "description": product["description"],
-            "image_key": IMAGE_KEY,
+            "image_src": IMAGE_SRC,
             "price": product["price"]
         }
         

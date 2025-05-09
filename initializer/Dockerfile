@@ -1,4 +1,4 @@
-FROM python:3.10-slim
+FROM python:3.9-slim
 
 WORKDIR /app
 
@@ -18,14 +18,17 @@ RUN pip install poetry && \
 # Copy source code
 COPY ./ ./
 
-# Set environment variables
+# Create a non-root user
+RUN useradd -m -u 1000 appuser
+
+# Set proper permissions
+RUN chown -R appuser:appuser /app
+
+# Set PYTHONPATH to /app so Python can find modules in the application directory
 ENV PYTHONPATH=/app
 
-# Expose port 8000
-EXPOSE 8000
-EXPOSE 4566
-EXPOSE 3306
-
+# Switch to non-root user
+USER appuser
 
 # Run the initializer
-CMD ["poetry", "run", "python", "initialize_database.py"] 
+CMD ["python", "initialize_database.py"] 

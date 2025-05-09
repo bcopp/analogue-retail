@@ -30,7 +30,6 @@ DB_CONFIG = {
 # GCS configuration from environment variables
 GCS_CONFIG = {
     'project': requireenv('GOOGLE_CLOUD_PROJECT'),
-    'bucket_name': requireenv('GCS_BUCKET_NAME')
 }
 
 # Initialize GCS client
@@ -45,7 +44,7 @@ class ProductAdd(BaseModel):
     product_id: int
     name: str
     description: str
-    image_key: str
+    image_src: str
     price: float
 
 class PurchaseRequest(BaseModel):
@@ -58,11 +57,22 @@ def get_db_connection():
     except Error as e:
         raise HTTPException(status_code=500, detail=f"Database connection error: {str(e)}")
 
-def validate_gcs_key(image_key: str) -> bool:
+def validate_gcs_path(image_src: str) -> bool:
     try:
+        # Parse the GCS path
+        if not image_src.startswith('gs://'):
+            return False
+        
+        # Extract bucket and blob from path
+        path_parts = image_src[5:].split('/', 1)  # Remove 'gs://' and split into bucket and blob
+        if len(path_parts) != 2:
+            return False
+        
+        bucket_name, blob_name = path_parts
+        
         # Check if the blob exists in the bucket
-        bucket = storage_client.bucket(GCS_CONFIG['bucket_name'])
-        blob = bucket.blob(image_key)
+        bucket = storage_client.bucket(bucket_name)
+        blob = bucket.blob(blob_name)
         return blob.exists()
     except:
         return False
@@ -149,16 +159,16 @@ async def add_product(product: ProductAdd):
                 detail="Invalid price. Price must be positive, have at most 2 decimal places, and be less than 100 million"
             )
         
-        # Validate GCS key
-        if not validate_gcs_key(product.image_key):
-            raise HTTPException(status_code=400, detail="Invalid GCS image key")
+        # Validate GCS path
+        if not validate_gcs_path(product.image_src):
+            raise HTTPException(status_code=400, detail="Invalid GCS image path")
         
         # Insert product
         try:
             cursor.execute("""
-                INSERT INTO product (product_id, name, description, image_key, price)
+                INSERT INTO product (product_id, name, description, image_src, price)
                 VALUES (%s, %s, %s, %s, %s)
-            """, (product.product_id, product.name, product.description, product.image_key, product.price))
+            """, (product.product_id, product.name, product.description, product.image_src, product.price))
             
             connection.commit()
             return {"message": "Product added successfully"}
@@ -259,4 +269,4 @@ async def get_all_products():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    uvicorn.run(app, host="0.0.0.0", port=8080) 

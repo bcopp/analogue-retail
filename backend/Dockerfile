@@ -18,11 +18,17 @@ RUN pip install poetry && \
 # Copy source code
 COPY ./ ./
 
-# Set environment variables
+# Create a non-root user
+RUN useradd -m -u 1000 appuser
+
+# Set proper permissions
+RUN chown -R appuser:appuser /app
+
+# Set PYTHONPATH to /app so Python can find modules in the application directory
 ENV PYTHONPATH=/app
 
-# Expose the port
-EXPOSE 8000
+# Switch to non-root user
+USER appuser
 
 # Run the server
-CMD ["poetry", "run", "python", "main_server.py"] 
+CMD ["python", "main_server.py"] 

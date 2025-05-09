@@ -9,7 +9,7 @@ def get_all_products() -> List[Dict]:
     Returns a list of product dictionaries
     """
     try:
-        response = requests.get('http://localhost:8000/getall')
+        response = requests.get('http://localhost:8080/getall')
         response.raise_for_status()  # Raise an exception for bad status codes
         return response.json()['products']
     except requests.exceptions.RequestException as e:
